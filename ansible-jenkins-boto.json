@@ -1,0 +1,169 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "PaymentsRegrQA",
+    "Parameters": {
+        "EC2KeyName": {
+            "Description": "Existing EC2 keypair name. Keypair must exist in target ENV.",
+            "Type": "String",
+            "Default": "commercial-techops"
+        }
+    },
+    "Mappings": {
+        "params": {
+            "environment": {
+                "windowsID": "ami-8ea4ade4",
+                "serversizeweb": "t2.large",
+                "securitygroupweb": "sg-edc49b89",
+                "securitygroupsafenet": "sg-37c2f753",
+                "vpcprimarysubnet": "subnet-c0307499",
+                "vpcsecondarysubnet": "subnet-e2026bc9",
+                "ec2ami": "ami-9d18f3f6",
+                "vpcprimaryaz": "us-east-1a",
+                "vpcsecondaryaz": "us-east-1c",
+                "rdsmultiaz": "false"
+            },
+            "resources": {
+                "elbhealthchecktargetweb": "TCP:8080",
+                "elbhealthchecktargetapp": "TCP:11201",
+                "iamprofile": "EC2-Developer",
+                "ebsauxsnapshot": "snap-075e3464",
+                "s3bucket": "cof-commercialbank-qa-application-data",
+                "ec2databucketinstallprefix": "JenkinsSlave/TempFolder"
+            },
+            "tagging": {
+                "tagasvci": "zzzzzz",
+                "tagenvci": "JenkinsRegressionTestingEnv",
+                "tagappname": "RegrTestServerJenkinsSlave",
+                "tagdepartment": "CML-Payments"
+            }
+        }
+    },
+    "Resources": {
+        "RegrPaymentsJenkinsSlave": {
+            "Type": "AWS::EC2::Instance",
+            "Properties": {
+                "AvailabilityZone": {
+                    "Fn::FindInMap": [
+                        "params",
+                        "environment",
+                        "vpcprimaryaz"
+                    ]
+                },
+                "SubnetId": {
+                    "Fn::FindInMap": [
+                        "params",
+                        "environment",
+                        "vpcprimarysubnet"
+                    ]
+                },
+                "IamInstanceProfile": {
+                    "Fn::FindInMap": [
+                        "params",
+                        "resources",
+                        "iamprofile"
+                    ]
+                },
+                "BlockDeviceMappings": [
+                    {
+                        "DeviceName": "/dev/xvdd",
+                        "Ebs": {
+                            "DeleteOnTermination": "true",
+                            "SnapshotId": {
+                                "Fn::FindInMap": [
+                                    "params",
+                                    "resources",
+                                    "ebsauxsnapshot"
+                                ]
+                            },
+                            "VolumeSize": "50",
+                            "VolumeType": "gp2"
+                        }
+                    }
+                ],
+                "ImageId": {
+                    "Fn::FindInMap": [
+                        "params",
+                        "environment",
+                        "windowsID"
+                    ]
+                },
+                "InstanceType": {
+                    "Fn::FindInMap": [
+                        "params",
+                        "environment",
+                        "serversizeweb"
+                    ]
+                },
+                "KeyName": {
+                    "Ref": "EC2KeyName"
+                },
+                "Tenancy": "default",
+                "SecurityGroupIds": [
+                    {
+                        "Fn::FindInMap": [
+                            "params",
+                            "environment",
+                            "securitygroupweb"
+                        ]
+                    },
+                    {
+                        "Fn::FindInMap": [
+                            "params",
+                            "environment",
+                            "securitygroupsafenet"
+                        ]
+                    }
+                ],
+                "Tags": [
+                    {"Key":"ASV","Value":{"Fn::FindInMap":["params","tagging","tagasvci"]}},
+                    {"Key":"CMDBEnvironment","Value":{"Fn::FindInMap":["params","tagging","tagenvci"]}},
+                    {"Key":"Application","Value":{"Fn::FindInMap":["params","tagging","tagappname"]}},
+                    {"Key":"Department","Value":{"Fn::FindInMap":["params","tagging","tagdepartment"]}}
+                ],
+                "UserData": {
+                    "Fn::Base64": {
+                        "Fn::Join": [
+                            "",
+                            [
+                                "#!/bin/bash \n",
+                    "echo 'HTTPS_PROXY=http://proxy.kdc.capitalone.com:8099' >> /etc/environment \n",
+                    "echo 'HTTP_PROXY=http://proxy.kdc.capitalone.com:8099' >> /etc/environment \n",
+                    "echo 'http_proxy=http://proxy.kdc.capitalone.com:8099' >> /etc/environment \n",
+                    "echo 'https_proxy=http://proxy.kdc.capitalone.com:8099' >> /etc/environment \n",
+                    "echo 'NO_PROXY=169.254.169.254,s3.amazonaws.com' >> /etc/environment \n",
+                    "echo 'no_proxy=169.254.169.254,s3.amazonaws.com' >> /etc/environment \n",
+
+                    "# set proxy for userdata script\n",
+                    "export HTTPS_PROXY=http://proxy.kdc.capitalone.com:8099 \n",
+                    "export HTTP_PROXY=http://proxy.kdc.capitalone.com:8099 \n",
+                    "export http_proxy=http://proxy.kdc.capitalone.com:8099 \n",
+                    "export https_proxy=http://proxy.kdc.capitalone.com:8099 \n",
+                    "export NO_PROXY=169.254.169.254,s3.amazonaws.com\n",
+                    "export no_proxy=169.254.169.254,s3.amazonaws.com\n",
+                "aws configure set s3.signature_version s3v4\n",
+                "cd /tmp \n",
+                "mkdir s3files \n",
+                "yum install wget -y \n",
+                "yum install java -y\n",
+                "/usr/local/bin/aws s3 cp s3://",{"Fn::FindInMap":["params","resources","s3bucket"]},"/JenkinsSlave/TempFolder/Python-3.5.1.tar.xz /tmp/s3files/Python-3.5.1.tar.xz\n",
+                "tar xf Python-3.*\n",
+                "cd /tmp/s3files/Python-3.*/\n",
+                "./configure\n",
+                "make \n",
+                "make altinstall \n",
+                "cd /\n",
+
+                "/usr/local/bin/aws s3 cp s3://",{"Fn::FindInMap":["params","resources","s3bucket"]},"/JenkinsSlave/TempFolder/pip-7.1.2.tar.gz /tmp/s3files/pip-7.1.2.tar.gz\n",
+                "tar -xvf pip-7.1.2.tar.gz\n",
+                "cd /pip-7.1.2/\n",
+                "python setup.py install\n",
+                "cd /\n"
+                            ]
+                        ]
+                    }
+                }
+            }
+        }
+    },
+    "Outputs": {}
+}
